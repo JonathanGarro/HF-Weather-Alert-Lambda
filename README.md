@@ -87,6 +87,3 @@ The function produces a CSV file with the original organization data enhanced wi
 - The function uses the AWS Lambda execution role for S3 access
 - No API keys are required for the NWS API
 - Ensure proper S3 bucket permissions
-
-## License
-[Specify your license information here]
