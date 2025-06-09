@@ -11,18 +11,13 @@ def integrate_weather_alerts(input_file, output_file):
     """
     Main integration function for AWS Lambda
     """
-    
-    print("=" * 50)
-    print("🌦️ Weather Alerts Integration")
-    print("=" * 50)
-    
+
     try:
-        # Load dashboard data
-        print(f"📁 Loading data from: {input_file}")
+        print(f"Loading data from: {input_file}")
         df_main = pd.read_csv(input_file)
-        print(f"✅ Loaded {len(df_main)} rows, {len(df_main.columns)} columns")
+        print(f"Loaded {len(df_main)} rows, {len(df_main.columns)} columns")
         
-        # Find CWA column
+        # find CWA column
         cwa_column = None
         possible_cwa_columns = ["CWA_Region", "CWA_region", "CWA", "Weather_Office", "NWS_Office"]
         
@@ -32,30 +27,30 @@ def integrate_weather_alerts(input_file, output_file):
                 break
         
         if not cwa_column:
-            print(f"❌ ERROR: CWA column not found. Available: {list(df_main.columns)}")
+            print(f"ERROR: CWA column not found. Available: {list(df_main.columns)}")
             return False
         
-        print(f"🎯 Using CWA column: {cwa_column}")
+        print(f"Using CWA column: {cwa_column}")
         
-        # Get unique CWA offices
+        # unique CWA offices
         cwa_offices = df_main[cwa_column].dropna().unique()
         cwa_offices_set = set(cwa.upper() for cwa in cwa_offices)
-        print(f"🏢 Found {len(cwa_offices)} unique CWA offices")
+        print(f"Found {len(cwa_offices)} unique CWA offices")
         
-        # Fetch alerts from NWS API
+        # fetch alerts from NWS API
         alerts = fetch_nws_alerts()
         if not alerts:
-            print("⚠️ No alerts retrieved - continuing with empty data")
+            print("No alerts retrieved - continuing with empty data")
             matched_alerts = []
         else:
             matched_alerts = match_alerts_to_cwa(alerts, cwa_offices_set)
         
-        # Create enhanced dataset
+        # create enhanced dataset
         if matched_alerts:
-            print("🔄 Creating enhanced dataset...")
+            print("Creating enhanced dataset...")
             df_alerts = pd.DataFrame(matched_alerts)
             
-            # Join with original data
+            # join with original data
             df_enhanced = df_main.merge(
                 df_alerts,
                 left_on=cwa_column,
@@ -63,24 +58,25 @@ def integrate_weather_alerts(input_file, output_file):
                 how='left'
             )
             
-            # Fix pandas deprecation warning and ensure proper boolean types
+            # fix pandas deprecation warning
+            # ensure proper boolean types
             df_enhanced = df_enhanced.infer_objects(copy=False)
             
-            # Convert string booleans to actual booleans for Tableau
+            # convert string booleans to actual booleans for Tableau
             df_enhanced['alert_active'] = df_enhanced['alert_active'].replace({'True': True, 'False': False}).fillna(False).astype(bool)
             df_enhanced['has_active_alerts'] = df_enhanced['alert_active']
             
-            # Add summary columns
+            # add summary columns
             df_enhanced['alert_count'] = df_enhanced.groupby(cwa_column)['alert_id'].transform('count').fillna(0)
             df_enhanced['max_severity_score'] = df_enhanced.groupby(cwa_column)['severity_score'].transform('max').fillna(0)
             
-            print(f"✅ Enhanced: {len(df_enhanced)} rows, {len(df_enhanced.columns)} columns")
+            print(f"Enhanced: {len(df_enhanced)} rows, {len(df_enhanced.columns)} columns")
             
         else:
-            print("📝 No alerts matched - adding empty columns")
+            print("No alerts matched - adding empty columns")
             df_enhanced = df_main.copy()
             
-            # Add empty alert columns with proper null values
+            # add empty alert columns with proper null values
             empty_columns = {
                 'cwa_office': None, 'alert_id': None, 'event_type': None, 'severity': None,
                 'urgency': None, 'certainty': None, 'status': None, 'headline': None,
@@ -93,7 +89,7 @@ def integrate_weather_alerts(input_file, output_file):
             for col, default_val in empty_columns.items():
                 df_enhanced[col] = default_val
         
-        # Clean text fields to prevent CSV parsing issues for Tableau S3
+        # clean text fields to prevent CSV parsing issues for Tableau S3
         text_fields = ['Organization Name', 'Primary Address Street', 'headline', 'description', 'areas_affected']
         
         for field in text_fields:
@@ -102,52 +98,51 @@ def integrate_weather_alerts(input_file, output_file):
                     lambda x: x.replace('"', '""').replace('\n', ' ').replace('\r', ' ') if pd.notna(x) and x != 'nan' else ''
                 )
         
-        # Save enhanced dataset with Tableau S3-friendly CSV settings
-        print(f"💾 Saving to: {output_file}")
+        # save enhanced dataset with Tableau S3-friendly CSV settings
+        # this took some trial/error - may require additional tweaks
+        print(f"Saving to: {output_file}")
         df_enhanced.to_csv(
             output_file, 
             index=False,
             encoding='utf-8',
-            quoting=csv.QUOTE_MINIMAL,  # Only quote when necessary - FIXED
-            escapechar=None,            # Remove escapechar - FIXED
-            doublequote=True,           # Handle quotes within fields
-            lineterminator='\n'         # Explicit line terminator - FIXED
+            quoting=csv.QUOTE_MINIMAL,
+            escapechar=None,
+            doublequote=True,
+            lineterminator='\n'
         )
         
-        print(f"✅ SUCCESS! Final dataset: {len(df_enhanced)} rows, {len(df_enhanced.columns)} columns")
+        print(f"SUCCESS! Final dataset: {len(df_enhanced)} rows, {len(df_enhanced.columns)} columns")
         return True
         
     except Exception as e:
-        print(f"❌ Integration error: {str(e)}")
+        print(f"Integration error: {str(e)}")
         return False
 
 def fetch_nws_alerts():
     """Fetch all active alerts from NWS API"""
-    print("🌐 Fetching alerts from NWS API...")
     
     try:
         url = "https://api.weather.gov/alerts/active"
         headers = {'User-Agent': 'AWSLambda-WeatherDashboard/1.0'}
         
         response = requests.get(url, headers=headers, timeout=60)
-        print(f"📡 API Response: {response.status_code}")
+        print(f"API Response: {response.status_code}")
         
         if response.status_code == 200:
             data = response.json()
             features = data.get('features', [])
-            print(f"✅ Retrieved {len(features)} alerts")
+            print(f"etrieved {len(features)} alerts")
             return features
         else:
-            print(f"❌ API Error: {response.status_code}")
+            print(f"API Error: {response.status_code}")
             return []
             
     except Exception as e:
-        print(f"❌ Error fetching alerts: {e}")
+        print(f"Error fetching alerts: {e}")
         return []
 
 def match_alerts_to_cwa(alerts, cwa_offices_set):
     """Match alerts to CWA offices"""
-    print(f"🎯 Matching alerts to {len(cwa_offices_set)} CWA offices...")
     
     matched_alerts = []
     
@@ -156,7 +151,7 @@ def match_alerts_to_cwa(alerts, cwa_offices_set):
         alert_office = None
         matching_method = None
         
-        # Strategy 1: Alert ID matching
+        # first try alert ID matching
         alert_id = props.get('id', '')
         if alert_id:
             id_parts = alert_id.split('-')
@@ -166,7 +161,7 @@ def match_alerts_to_cwa(alerts, cwa_offices_set):
                     matching_method = "alert_id"
                     break
         
-        # Strategy 2: Zone URL matching
+        # then try zone URL matching
         if not alert_office and 'affectedZones' in props:
             zones = props.get('affectedZones', [])
             for zone_url in zones:
@@ -178,7 +173,7 @@ def match_alerts_to_cwa(alerts, cwa_offices_set):
                         matching_method = "affected_zones"
                         break
         
-        # Strategy 3: State mapping
+        # roll up to state mapping if CWA not specified
         if not alert_office:
             area_desc = props.get('areaDesc', '').upper()
             state_cwa_mapping = {
@@ -234,7 +229,7 @@ def match_alerts_to_cwa(alerts, cwa_offices_set):
                     if alert_office:
                         break
         
-        # Strategy 4: Text content matching
+        # text content matching
         if not alert_office:
             text_fields = [
                 props.get('headline', ''),
@@ -252,10 +247,9 @@ def match_alerts_to_cwa(alerts, cwa_offices_set):
                             break
                     if alert_office:
                         break
-        
-        # If match found, process alert
+
         if alert_office and alert_office in cwa_offices_set:
-            # Fix areas_affected field to handle both string and list properly
+            # fix areas_affected field to handle both string and list properly
             area_desc = props.get('areaDesc', '')
             if isinstance(area_desc, list):
                 areas_affected = '; '.join(area_desc)
@@ -284,7 +278,7 @@ def match_alerts_to_cwa(alerts, cwa_offices_set):
             
             matched_alerts.append(alert_data)
     
-    print(f"🎯 Matched {len(matched_alerts)} alerts")
+    print(f"Matched {len(matched_alerts)} alerts")
     return matched_alerts
 
 def is_alert_active(props):
