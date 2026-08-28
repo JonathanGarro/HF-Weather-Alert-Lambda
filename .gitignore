@@ -6,6 +6,10 @@
 ## Project Specific
 tableau-s3-access_accessKeys.csv
 
+# Project data/outputs symlinks (point into Box) - no trailing slash, these are symlinks
+data
+outputs
+
 
 
 # Byte-compiled / optimized / DLL files
